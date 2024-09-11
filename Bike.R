@@ -10,8 +10,15 @@ train <- vroom("~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/train.csv")
 test <- vroom("~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/test.csv")
 
 #Refactor
-train$season <- factor(train$season, levels = c("Spring", "Summer", "Fall", "Winter"))
-train$weather <- factor(train$weather, levels = c("Sunny", "Cloudy", "Light Rain", "Heavy Rain"))
+train$season <- as.factor(train$season)
+levels(train$season) <- c("Spring", "Summer", "Fall", "Winter")
+train$weather <- as.factor(train$weather)
+levels(train$weather) <- c("Sunny", "Cloudy", "Light Rain", "Heavy Rain")
+
+test$season <- as.factor(test$season)
+levels(test$season) <- c("Spring", "Summer", "Fall", "Winter")
+test$weather <- as.factor(test$weather)
+levels(test$weather) <- c("Sunny", "Cloudy", "Light Rain", "Heavy Rain")
 
 
 #EDA Plots
@@ -35,5 +42,24 @@ four_plot <- (weather_bar + temp_count)/(count_over_time + count_by_season)
 
 ggsave("four_plots.jpg", plot = four_plot, path = "~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/")
 
+
 #Linear Regression
+my_lm <- linear_reg() %>% 
+  set_engine("lm") %>% 
+  set_mode("regression") %>% 
+  fit(data = train, formula = count ~ datetime + season + holiday + workingday + weather + temp + atemp + humidity + windspeed)
+
+lm_predict <- predict(my_lm, new_data= test)
+
+lm_predict
+
+#For Kaggle Submission
+kaggle_submission <- lm_predict %>% 
+  bind_cols(., test) %>% 
+  select(datetime, .pred) %>% 
+  rename(count = .pred) %>% 
+  mutate(count=pmax(0, count)) %>%
+  mutate(datetime=as.character(format(datetime)))
+
+vroom_write(x=kaggle_submission, file="~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/linearPredsFactor.csv", delim=",")
 
