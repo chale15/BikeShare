@@ -4,6 +4,7 @@ library(vroom)
 library(DataExplorer)
 library(patchwork)
 library(GGally)
+library(poissonreg)
 
 #Import Training and Testing Data
 train <- vroom("~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/train.csv")
@@ -14,11 +15,15 @@ train$season <- as.factor(train$season)
 levels(train$season) <- c("Spring", "Summer", "Fall", "Winter")
 train$weather <- as.factor(train$weather)
 levels(train$weather) <- c("Sunny", "Cloudy", "Light Rain", "Heavy Rain")
+train$workingday <- factor(train$workingday)
+train$holiday <- factor(train$holiday)
 
 test$season <- as.factor(test$season)
 levels(test$season) <- c("Spring", "Summer", "Fall", "Winter")
 test$weather <- as.factor(test$weather)
 levels(test$weather) <- c("Sunny", "Cloudy", "Light Rain", "Heavy Rain")
+test$workingday <- factor(test$workingday)
+test$holiday <- factor(test$holiday)
 
 
 #EDA Plots
@@ -51,15 +56,57 @@ my_lm <- linear_reg() %>%
 
 lm_predict <- predict(my_lm, new_data= test)
 
-lm_predict
+#lm_predict
 
 #For Kaggle Submission
-kaggle_submission <- lm_predict %>% 
+lin_kaggle_submission <- lm_predict %>% 
   bind_cols(., test) %>% 
   select(datetime, .pred) %>% 
   rename(count = .pred) %>% 
   mutate(count=pmax(0, count)) %>%
   mutate(datetime=as.character(format(datetime)))
 
-vroom_write(x=kaggle_submission, file="~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/linearPredsFactor.csv", delim=",")
+vroom_write(x=lin_kaggle_submission, file="~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/linearPredsFactor.csv", delim=",")
+
+
+#Poisson Regression
+pois_model <- poisson_reg() %>% 
+  set_engine("glm") %>% 
+  set_mode("regression") %>% 
+  fit(data = train, formula = count ~ datetime + season + holiday + workingday + weather + temp + atemp + humidity + windspeed)
+
+pois_predict <- predict(pois_model, new_data = test)
+
+#pois_predict
+
+#For Kaggle Submission
+
+pois_kaggle_submission <- pois_predict %>% 
+  bind_cols(., test) %>%
+  select(datetime, .pred) %>%
+  rename(count=.pred) %>%
+  mutate(datetime=as.character(format(datetime)))
+
+vroom_write(x=pois_kaggle_submission, file="~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/poissonPreds1.csv", delim=",")
+
+
+#Linear Regression on log(count)
+
+log_lm <- linear_reg() %>% 
+  set_engine("lm") %>% 
+  set_mode("regression") %>% 
+  fit(data = train, formula = log(count) ~ datetime + season + holiday + workingday + weather + temp + atemp + humidity + windspeed)
+
+log_lm_predict <- predict(log_lm, new_data= test)
+
+#For kaggle submission
+
+log_lin_kaggle_submission <- log_lm_predict %>% 
+  bind_cols(., test) %>% 
+  select(datetime, .pred) %>% 
+  rename(count = .pred) %>% 
+  mutate(count=exp(count)) %>%
+  mutate(datetime=as.character(format(datetime)))
+
+vroom_write(x=log_lin_kaggle_submission, file="~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/log_linearPreds.csv", delim=",")
 
