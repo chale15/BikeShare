@@ -5,18 +5,21 @@ library(DataExplorer)
 library(patchwork)
 library(GGally)
 library(poissonreg)
+library(lubridate)
 
 #Import Training and Testing Data
 train <- vroom("~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/train.csv")
 test <- vroom("~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/test.csv")
 
-#Refactor
+#Wrangling
 train$season <- as.factor(train$season)
 levels(train$season) <- c("Spring", "Summer", "Fall", "Winter")
 train$weather <- as.factor(train$weather)
 levels(train$weather) <- c("Sunny", "Cloudy", "Light Rain", "Heavy Rain")
 train$workingday <- factor(train$workingday)
 train$holiday <- factor(train$holiday)
+train <- train %>% select(-casual, -registered)
+train$dayOfWeek <- wday(train$datetime, label=TRUE)
 
 test$season <- as.factor(test$season)
 levels(test$season) <- c("Spring", "Summer", "Fall", "Winter")
@@ -24,6 +27,7 @@ test$weather <- as.factor(test$weather)
 levels(test$weather) <- c("Sunny", "Cloudy", "Light Rain", "Heavy Rain")
 test$workingday <- factor(test$workingday)
 test$holiday <- factor(test$holiday)
+test$dayOfWeek <- wday(test$datetime, label=TRUE)
 
 
 #EDA Plots
@@ -52,7 +56,7 @@ ggsave("four_plots.jpg", plot = four_plot, path = "~/Desktop/Fall 2024/Stat 348/
 my_lm <- linear_reg() %>% 
   set_engine("lm") %>% 
   set_mode("regression") %>% 
-  fit(data = train, formula = count ~ datetime + season + holiday + workingday + weather + temp + atemp + humidity + windspeed)
+  fit(data = train, formula = count ~ .)
 
 lm_predict <- predict(my_lm, new_data= test)
 
@@ -73,7 +77,7 @@ vroom_write(x=lin_kaggle_submission, file="~/Desktop/Fall 2024/Stat 348/GitHubRe
 pois_model <- poisson_reg() %>% 
   set_engine("glm") %>% 
   set_mode("regression") %>% 
-  fit(data = train, formula = count ~ datetime + season + holiday + workingday + weather + temp + atemp + humidity + windspeed)
+  fit(data = train, formula = count ~ .)
 
 pois_predict <- predict(pois_model, new_data = test)
 
@@ -95,7 +99,7 @@ vroom_write(x=pois_kaggle_submission, file="~/Desktop/Fall 2024/Stat 348/GitHubR
 log_lm <- linear_reg() %>% 
   set_engine("lm") %>% 
   set_mode("regression") %>% 
-  fit(data = train, formula = log(count) ~ datetime + season + holiday + workingday + weather + temp + atemp + humidity + windspeed)
+  fit(data = train, formula = log(count) ~ .)
 
 log_lm_predict <- predict(log_lm, new_data= test)
 
@@ -108,5 +112,5 @@ log_lin_kaggle_submission <- log_lm_predict %>%
   mutate(count=exp(count)) %>%
   mutate(datetime=as.character(format(datetime)))
 
-vroom_write(x=log_lin_kaggle_submission, file="~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/log_linearPreds.csv", delim=",")
+vroom_write(x=log_lin_kaggle_submission, file="~/Desktop/Fall 2024/Stat 348/GitHubRepos/BikeShare/log_linearPreds2.csv", delim=",")
 
