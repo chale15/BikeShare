@@ -206,3 +206,27 @@ recipe_kaggle_submission <- penalized_preds_4 %>%
   mutate(datetime=as.character(format(datetime)))
 
 vroom_write(x=recipe_kaggle_submission, file="PenalizedPreds6.csv", delim=",")
+
+#Kaggle Submission Guessing
+
+penalized_model_5 <-linear_reg(penalty = .0015, mixture = 0.85) %>% 
+  set_engine("glmnet")
+
+penalized_workflow_5 <- workflow() %>% 
+  add_recipe(bike_recipe2) %>% 
+  add_model(penalized_model_5) %>% 
+  fit(data = train)
+
+penalized_preds_5 <- predict(penalized_workflow_5, new_data = test)
+
+
+#Format and Write for Kaggle Submission
+
+recipe_kaggle_submission <- penalized_preds_5 %>% 
+  bind_cols(., test) %>% 
+  select(datetime, .pred) %>% 
+  rename(count = .pred) %>% 
+  mutate(count=exp(count)) %>%
+  mutate(datetime=as.character(format(datetime)))
+
+vroom_write(x=recipe_kaggle_submission, file="PenalizedPreds12.csv", delim=",")
