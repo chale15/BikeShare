@@ -21,16 +21,20 @@ train <- train %>% mutate(count = log(count)) %>% select(-casual, -registered)
 #Feature Engineering
 
 recipe_1 <- recipe(count~., data = train) %>% 
-  step_mutate(season=factor(season, labels=c("Spring","Summer","Fall","Winter")),
-              holiday=factor(holiday),
-              workingday=factor(workingday),
-              weather= factor(ifelse(weather==4,3,weather), labels=c("Sunny","Cloudy","Rainy"))) %>% 
   step_date(datetime, features = "dow") %>% 
   step_time(datetime, features="hour") %>% 
   step_rm(datetime) %>% 
+  step_mutate(working_hour = workingday * datetime_hour) %>% 
+  step_mutate(season=factor(season, labels=c("Spring","Summer","Fall","Winter")),
+              holiday=factor(holiday),
+              workingday=factor(workingday),
+              weather= factor(ifelse(weather==4,3,weather), labels=c("Sunny","Cloudy","Rainy")))%>%
   step_mutate(datetime_hour=factor(datetime_hour)) %>%
   step_dummy(all_nominal_predictors()) %>% 
   step_normalize(all_numeric_predictors())
+
+#prepped <- prep(recipe_1)
+#baked <- bake(prepped, new_data = train)
 
 
 model_1 <-linear_reg(penalty = tune(), mixture = tune()) %>% 
@@ -70,4 +74,4 @@ cross_val_kaggle_submission <- final_preds %>%
   mutate(count=exp(count)) %>%
   mutate(datetime=as.character(format(datetime)))
 
-vroom_write(x=cross_val_kaggle_submission, file="./Submissions/CrossValPreds6.csv", delim=",")
+vroom_write(x=cross_val_kaggle_submission, file="./Submissions/CrossValPreds11.csv", delim=",")
