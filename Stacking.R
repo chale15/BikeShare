@@ -40,16 +40,18 @@ recipe_1 <- recipe(count~., data = train) %>%
   step_dummy(all_nominal_predictors()) %>% 
   step_normalize(all_numeric_predictors())
 
-recipe_2 <- recipe(count~., data = train) %>% 
-  step_date(datetime, features = "dow") %>% 
-  step_time(datetime, features="hour") %>% 
-  step_rm(datetime, holiday, temp) %>% 
+recipe_2 <- recipe(count ~ ., data = train) %>% 
+  step_date(datetime, features = c("year", "dow")) %>% 
+  step_time(datetime, features = "hour") %>% 
   step_mutate(working_hour = workingday * datetime_hour) %>% 
-  step_mutate(season=factor(season, labels=c("Spring","Summer","Fall","Winter")),
-              workingday=factor(workingday),
-              weather= factor(ifelse(weather==4,3,weather), labels=c("Sunny","Cloudy","Rainy"))) %>%
-  step_mutate(datetime_hour=factor(datetime_hour),
-              datetime_dow = factor(datetime_dow))
+  step_rm(datetime, holiday, temp) %>% 
+  step_mutate(
+    season = factor(season, labels = c("Spring", "Summer", "Fall", "Winter")),
+    workingday = factor(workingday),
+    weather = factor(ifelse(weather == 4, 3, weather), labels = c("Sunny", "Cloudy", "Rainy")),
+    datetime_hour = factor(datetime_hour),
+    datetime_dow = factor(datetime_dow),
+    datetime_year = factor(datetime_year))
 
 
 folds <- vfold_cv(train, v = 10, repeats=1)
@@ -107,7 +109,7 @@ rt_models <- rt_workflow %>%
             metrics=metric_set(rmse, mae, rsq),
             control = untunedModel)
 
-bestTune <- cv_results %>% select_best(metric="rmse")
+bestTune <- rt_models %>% select_best(metric="rmse")
 
 #Random Forest
 rf_model <- rand_forest(mtry = tune(),
@@ -129,28 +131,69 @@ rf_models <- rf_workflow %>%
             control = untunedModel)
 
 #BART Model
-bart_model <- bart() %>% 
+bart_model <- parsnip::bart(trees = 1000) %>% 
   set_engine("dbarts") %>% 
-  set_mode("regression")
+  set_mode("regression") %>% 
+  translate()
 
 bart_workflow <- workflow() %>% 
   add_model(bart_model) %>% 
   add_recipe(recipe_2)
 
-bart_models <- bart_workflow %>% 
-  fit_resamples(bart_workflow, 
+bart_models <- fit_resamples(bart_workflow, 
                 resamples=folds,
                 metrics= metric_set(rmse, mae, rsq),
                 control = tunedModel)
 
+#Boosted Model
+bt_model <- boost_tree(mtry = tune(),
+                       min_n = tune(),
+                       trees = 500,
+                       learn_rate = tune()) %>% 
+  set_engine("xgboost") %>% 
+  set_mode("regression") %>% 
+  translate()
+
+bt_workflow <- workflow() %>% 
+  add_recipe(recipe_1) %>% 
+  add_model(bt_model)
+
+bt_tuning_grid <- grid_regular(mtry(range=c(1, 9)), min_n(), learn_rate(), levels = 5)
+
+bt_models <- bt_workflow %>%
+  tune_grid(resamples=folds,
+            grid=bt_tuning_grid,
+            metrics=metric_set(rmse, mae, rsq),
+            control = untunedModel)
+
+#MLP Model
+mlp_model <- mlp(hidden_units = tune(),
+                 penalty = tune(),
+                 epochs = 500) %>% 
+  set_engine("nnet") %>% 
+  set_mode("regression") %>% 
+  translate()
+
+mlp_workflow <- workflow() %>% 
+  add_recipe(recipe_1) %>% 
+  add_model(mlp_model)
+
+mlp_tuning_grid <- grid_regular(hidden_units(), penalty(), levels = 5)
+
+mlp_models <- mlp_workflow %>%
+  tune_grid(resamples=folds,
+            grid=mlp_tuning_grid,
+            metrics=metric_set(rmse),
+            control = untunedModel)
+
 
 #Stacked Model
 my_stack <- stacks() %>% 
-#  add_candidates(preg_models) %>% 
   add_candidates(lreg_model) %>% 
   add_candidates(rf_models) %>% 
-#  add_candidates(rt_models) %>% 
-  add_candidates(bart_models)
+  add_candidates(bart_models) %>% 
+#  add_candidates(bt_models) %>% 
+  add_candidates(mlp_models)
 
 stack_model <- my_stack %>% 
   blend_predictions() %>% 
@@ -158,17 +201,17 @@ stack_model <- my_stack %>%
 
 #stack_data <- as_tibble(my_stack)
 
-final_preds4 <- stack_model %>% predict(new_data=test)
+final_preds <- stack_model %>% predict(new_data=test)
 
 #Kaggle Submission
-stacking_kaggle_submission <- final_preds4 %>% 
+stacking_kaggle_submission <- final_preds %>% 
   bind_cols(., test) %>% 
   select(datetime, .pred) %>% 
   rename(count = .pred) %>% 
   mutate(count=exp(count)) %>%
   mutate(datetime=as.character(format(datetime)))
 
-vroom_write(x=stacking_kaggle_submission, file="./Submissions/StackedPreds24.csv", delim=",")
+vroom_write(x=stacking_kaggle_submission, file="./Submissions/StackedPreds38.csv", delim=",")
 
 
 
